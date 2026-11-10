@@ -52,6 +52,11 @@ sleep/wake several times fine.
 
 ## Needs the maintainer
 
+**Non-Steam custom prefixes (#166):** explicit `STEAM_COMPAT_DATA_PATH` now takes precedence over Steam's
+`compatdata/<appid>` directory, even after Steam creates that directory. Synthetic prefix tests cover XMX proof
+and shim placement; not tested on hardware. Check a shortcut with both paths on the Claw: its XMX proof and setup
+use the custom prefix, and the unused Steam directory is unchanged.
+
 **XeSS XMX package 20261111 (2026-11-10):** pinned without waiting (maintainer's word for HHHHanasak1's releases).
 New on the EX (Xe3): install.sh's default is "stock mode", the package's unpatched Mesa 26.3 plus its Vulkan layer,
 with five more session variables that ClawDeck carries per game. Check on the EX: Setup → Update XeSS XMX, then CONTROL

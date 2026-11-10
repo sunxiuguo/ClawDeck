@@ -79,3 +79,63 @@ def test_unreal_launcher_stub_is_not_where_optiscaler_goes(tmp_path):
     _touch(str(tmp_path / "G1R-Win64-Shipping.exe"), b"x" * 300)
     _touch(str(tmp_path / "G1R/Binaries/Win64/G1R-Win64-Shipping.exe"), b"x" * 5000)
     assert optiscaler.main_exe_dir(str(tmp_path)) == str(tmp_path / "G1R/Binaries/Win64")
+
+
+def _shortcut_prefix(tmp_path, launch_options):
+    home = tmp_path / "home"
+    exe = _touch(str(tmp_path / "games/Game.exe"))
+    entry = {"appid": 123, "AppName": "Game", "Exe": exe, "LaunchOptions": launch_options}
+    _touch(str(home / shortcuts.USERDATA / "1/config/shortcuts.vdf"), _kv({"shortcuts": {"0": entry}}))
+    return home, home / xess.COMPATDATA / "123"
+
+
+def test_explicit_prefix_wins_over_empty_and_populated_steam_directories(tmp_path):
+    custom = tmp_path / "custom prefix"
+    home, default = _shortcut_prefix(tmp_path, f'STEAM_COMPAT_DATA_PATH="{custom}" %command%')
+    default.mkdir(parents=True)
+    expected = str(custom / "pfx/drive_c")
+    assert xess.prefix_dir(str(home), "123") == expected
+    (default / "pfx/drive_c").mkdir(parents=True)
+    assert xess.prefix_dir(str(home), "123") == expected
+    # A selected prefix need not exist yet; never silently read/write the other prefix.
+    assert not custom.exists()
+
+
+def test_default_prefix_without_explicit_path(tmp_path):
+    home, default = _shortcut_prefix(tmp_path, "STEAM_COMPAT_DATA_PATH= %command%")
+    assert xess.prefix_dir(str(home), "123") == str(default / "pfx/drive_c")
+    default.mkdir(parents=True)
+    assert xess.prefix_dir(str(home), "123") == str(default / "pfx/drive_c")
+    assert xess.prefix_dir(str(home), "456") == str(home / xess.COMPATDATA / "456/pfx/drive_c")
+
+
+def test_relative_prefix_keeps_existing_parser_semantics(tmp_path):
+    home, default = _shortcut_prefix(tmp_path, "STEAM_COMPAT_DATA_PATH=relative/prefix %command%")
+    default.mkdir(parents=True)
+    assert xess.prefix_dir(str(home), "123") == "relative/prefix/pfx/drive_c"
+
+
+def test_custom_prefix_proof_and_shim_ignore_steam_directory(tmp_path, monkeypatch):
+    from clawdeck import userexec, xmxscope
+
+    custom = tmp_path / "custom"
+    home, default = _shortcut_prefix(tmp_path, f"STEAM_COMPAT_DATA_PATH='{custom}' %command%")
+    default.mkdir(parents=True)
+    drive = custom / "pfx/drive_c"
+    _touch(str(drive / "igdext_kernels/anv_canary"))
+    _touch(str(drive / "igdext_kernels/map.txt"), b"kernel-one\nkernel-two\n")
+    proof = xess.xmx_proof(str(home), "123")
+    assert proof["state"] == "ok"
+    assert proof["kernels"] == 2
+    sys32 = drive / "windows/system32"
+    sys32.mkdir(parents=True)
+    pkg = tmp_path / "package"
+    _touch(str(pkg / "igdext64.dll"), b"synthetic-shim")
+    _touch(str(pkg / "ControlLib.dll"), b"synthetic-control")
+    monkeypatch.setattr(userexec, "chown_tree", lambda *_: None)
+    result = xmxscope.prefix_shim(str(home), "123", str(pkg))
+    assert result["ok"] and result["placed"]
+    assert (sys32 / "driverstore/filerepository/igd_faux.inf_1/igdext64.dll").read_bytes() == b"synthetic-shim"
+    assert (sys32 / "ControlLib.dll").read_bytes() == b"synthetic-control"
+    assert not list(default.iterdir())
+    assert not xmxscope.prefix_shim(str(home), "123", str(pkg))["placed"]

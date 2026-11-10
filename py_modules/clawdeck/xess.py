@@ -332,11 +332,9 @@ def stock_env() -> dict[str, str]:
 def prefix_dir(home: str, appid: str) -> str:
     """The game's Wine drive C:. A non-Steam game can name its own prefix (STEAM_COMPAT_DATA_PATH in its launch
     options, #161); a Steam game's is compatdata/<appid>."""
-    d = os.path.join(home, COMPATDATA, str(appid))
-    if not os.path.isdir(d):
-        sc = shortcuts.find(home, appid)
-        if sc:
-            d = sc["compat"]
+    # Steam can create compatdata/<appid> even when Proton uses the shortcut's explicit path.
+    sc = shortcuts.find(home, appid)
+    d = sc["compat"] if sc else os.path.join(home, COMPATDATA, str(appid))
     return os.path.join(d, "pfx", "drive_c")
 
 
